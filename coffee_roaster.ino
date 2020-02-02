@@ -109,6 +109,8 @@ void loop() {
   else buttons = 15;
   
   Input = get_temp();
+
+  //Go ahead and write values to LCD
   refreshlcd();
   unsigned long now = millis();
 
@@ -116,9 +118,13 @@ void loop() {
 // Serial.println(Input);
  Serial.print("Flag: ");
  Serial.println(buttons);
- Serial.println(roast_val);
+ //Serial.println(roast_val);
  Serial.print("Current state: ");
  Serial.println(CurrentState);
+ Serial.print("Idle flag: ");
+ Serial.println(idle_state_flag);
+ Serial.print("Debug flag: ");
+ Serial.println(debug_state_flag);
   
 	switch (CurrentState) {
 		case state_idle:{
@@ -126,8 +132,6 @@ void loop() {
       RELAY = 0;
       digitalWrite(FAN2_PIN, LOW);
       analogWrite(FAN1_PIN, fan1_val);
-    
-			if (idle_state_flag == 0) idle_state_flag == 1;
   
 			if(buttons == 15) CurrentState = state_idle;
       else if (buttons == 14) CurrentState = state_idle_transition;
@@ -136,19 +140,20 @@ void loop() {
       
       thermal_power_button();
   
-			if (idle_state_flag == 0) idle_state_flag = 1;
+			//if (idle_state_flag == 0) idle_state_flag = 1;
 		}
 		break;
     
-		case state_idle_transition:
+		case state_idle_transition: {
 			lcd.lcdClear();
       CurrentState = state_roasting;
 			idle_state_flag = 0;
       fan1_ramp_up();
       Serial.print("To roast");
+		}
 		break;
 
-    case state_idle_to_debug_transition:
+    case state_idle_to_debug_transition:{
       lcd.lcdClear();
       CurrentState = state_debug;
       idle_state_flag = 0;
@@ -157,6 +162,7 @@ void loop() {
       char fan1[4] = "00";
       int fan1_val = 0;
       Serial.print("To debug");
+    }
     break;
     
 		case state_roasting: {
@@ -168,8 +174,6 @@ void loop() {
 
       analogWrite(RELAY_PIN, roast_val);
       RELAY = 1;
-      //digitalWrite(FAN2_PIN, HIGH);
-      //analogWrite(FAN_PIN, 50);
       
       thermal_power_button();
 			
@@ -177,14 +181,14 @@ void loop() {
       //else if (!(buttons & 0x01)) CurrentState = state
 			else CurrentState = state_roasting;
   
-			if (roasting_state_flag == 0) roasting_state_flag = 1;
+			//if (roasting_state_flag == 0) roasting_state_flag = 1;
 		}
 		break;
 
 		case state_roasting_transition:
+			lcd.lcdClear();
 			roasting_state_flag = 0;
       roasting_started = 0;
-			lcd.lcdClear();
 			CurrentState = state_cooling;
       roast_time = 0;
 		break;
@@ -217,7 +221,7 @@ void loop() {
       else
         CurrentState = state_cooling;
       
-      if (cooling_state_flag == 0) cooling_state_flag = 1;
+    //  if (cooling_state_flag == 0) cooling_state_flag = 1;
     } 
     break;
 
@@ -240,8 +244,6 @@ void loop() {
 
       thermal_power_button();
       fan1_button();
-      
-      if (debug_state_flag == 0) debug_state_flag = 1;
     }
     break;
 
@@ -327,12 +329,26 @@ ISR(TIMER1_COMPA_vect) {
   check_buttons_flag++;
 }
 
+//The state flags are set so the second time around it doesn't refresh the entire display
 void refreshlcd(){
+  Serial.println("Refresh LCD");
   if (refresh_display_flag == 1){
-    if (CurrentState == state_idle) display_idle();
-    else if (CurrentState == state_roasting) display_roasting();
-    else if (CurrentState == state_cooling) display_cooling();
-    else if (CurrentState == state_debug) display_debug();
+    if (CurrentState == state_idle) {
+      display_idle();
+      idle_state_flag = 1;
+    }
+    else if (CurrentState == state_roasting) {
+      display_roasting();
+      roasting_state_flag = 1;
+    }
+    else if (CurrentState == state_cooling) {
+      display_cooling();
+      cooling_state_flag = 1;
+    }
+    else if (CurrentState == state_debug) {
+      display_debug();
+      debug_state_flag = 1;
+    }
     refresh_display_flag = 0;
   }
 }
@@ -428,7 +444,7 @@ void display_debug() {
     lcd.lcdGoToXY(5,2);
     lcd.lcdWrite(fan1);
     lcd.lcdGoToXY(8,2);
-    lcd.lcdWrite(" Therm ");
+    lcd.lcdWrite("  SSR ");
     lcd.lcdGoToXY(14,2);
     lcd.lcdWrite(roast);
   }
