@@ -3,6 +3,8 @@ Pretty crappy coffee roasting code.  That is all
 
 Written by Nathan Slattengren.  
 BSD license, all text above must be included in any redistribution
+
+This is revision 7 of the code and supports a popcorn popper.
 ****************************************************/
 
 #include <SPI.h>
