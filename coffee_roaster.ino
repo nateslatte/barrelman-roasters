@@ -4,7 +4,7 @@ Pretty crappy coffee roasting code.  That is all
 Written by Nathan Slattengren.  
 BSD license, all text above must be included in any redistribution
 
-This is revision 7 of the code and supports a popcorn popper.
+This is revision 8 of the design and supports connecting to a convection oven.  See Revision 7 for the last support of coffee roaster.
 ****************************************************/
 
 #include <SPI.h>
@@ -26,7 +26,7 @@ int buttons;
 #define MAXCLK 30 // The TX LED has a defined Arduino pin
 #define RELAY_PIN 6
 #define FAN1_PIN 11
-#define FAN2_PIN 12
+#define FAN2_PIN 5
 #define LED_GREEN_BOTTOM 8
 #define LED_GREEN_MIDDLE 9
 #define LED_RED_TOP 10
@@ -39,7 +39,7 @@ Adafruit_MAX31855 thermocouple(MAXCLK, MAXCS, MAXDO);
 double Setpoint, Input, Output, temperature;
 
 //Run a fake temperature increase
-boolean simulation = true;
+boolean simulation = false;
 boolean linear = true;
 double Input_simulation = 75;
 
@@ -53,7 +53,7 @@ unsigned long windowStartTime;
 void setup() {
   windowStartTime = millis();
   Wire.begin();
-  Serial.begin(115200);
+  Serial.begin(19200);
   
   pinMode(RELAY_PIN, OUTPUT);
   pinMode(FAN1_PIN, OUTPUT);
@@ -65,7 +65,7 @@ void setup() {
 
   analogWrite(RELAY_PIN, 0);
   analogWrite(FAN1_PIN, fan1_val);
-  analogWrite(FAN2_PIN, 0);
+  analogWrite(FAN2_PIN, fan2_val);
   digitalWrite(LED_GREEN_MIDDLE, HIGH);
   digitalWrite(LED_GREEN_BOTTOM, HIGH);
 
@@ -82,9 +82,6 @@ void setup() {
   TCCR1B |= (1 << CS12);    // 256 prescaler 
   TIMSK1 |= (1 << OCIE1A);  // enable timer compare interrupt
   interrupts();  //allows interrupts
-	
-
- // serialTime = 0;
 	
 	//wait for MAX chip to stabilize if simulation is not happening
 	if (simulation) {
@@ -104,6 +101,7 @@ int RELAY = 0;
 void loop() {
   digitalWrite(LED_RED_TOP, LEDBlink);
   LEDBlink = !LEDBlink;
+  analogWrite(FAN2_PIN, fan2_val);
   if (check_buttons_flag >= 1){
     buttons = lcd.readButtons();
     check_buttons_flag = 0;
@@ -115,25 +113,14 @@ void loop() {
   //Go ahead and write values to LCD
   refreshlcd();
   unsigned long now = millis();
-
-// Serial.print("Temp: ");
-// Serial.println(Input);
- Serial.print("Flag: ");
- Serial.println(buttons);
- //Serial.println(roast_val);
- Serial.print("Current state: ");
- Serial.println(CurrentState);
- Serial.print("Idle flag: ");
- Serial.println(idle_state_flag);
- Serial.print("Debug flag: ");
- Serial.println(debug_state_flag);
   
 	switch (CurrentState) {
 		case state_idle:{
 			analogWrite(RELAY_PIN, 0);
       RELAY = 0;
-      digitalWrite(FAN2_PIN, LOW);
+      fan2_val = 0;
       analogWrite(FAN1_PIN, fan1_val);
+      
   
 			if(buttons == 15) CurrentState = state_idle;
       else if (buttons == 14) CurrentState = state_idle_transition;
@@ -141,8 +128,6 @@ void loop() {
       else CurrentState = state_idle;
       
       thermal_power_button();
-  
-			//if (idle_state_flag == 0) idle_state_flag = 1;
 		}
 		break;
     
@@ -150,8 +135,7 @@ void loop() {
 			lcd.lcdClear();
       CurrentState = state_roasting;
 			idle_state_flag = 0;
-      fan1_ramp_up();
-      Serial.print("To roast");
+      fan1_ramp_up(4);
 		}
 		break;
 
@@ -161,9 +145,8 @@ void loop() {
       idle_state_flag = 0;
       char roast[4] = "00";
       int roast_val = 0;
-      char fan1[4] = "00";
       int fan1_val = 0;
-      Serial.print("To debug");
+      fan1_ramp_up(4);
     }
     break;
     
@@ -176,14 +159,12 @@ void loop() {
 
       analogWrite(RELAY_PIN, roast_val);
       RELAY = 1;
+      fan2_val = 255;
       
       thermal_power_button();
 			
 			if (!(buttons & 0x02)) CurrentState = state_roasting_transition;
-      //else if (!(buttons & 0x01)) CurrentState = state
 			else CurrentState = state_roasting;
-  
-			//if (roasting_state_flag == 0) roasting_state_flag = 1;
 		}
 		break;
 
@@ -198,15 +179,16 @@ void loop() {
     case state_cooling: {
       analogWrite(RELAY_PIN, 0);
       RELAY = 0;
-      //digitalWrite(FAN2_PIN, HIGH);
       analogWrite(FAN1_PIN, 150);
-      Setpoint = 125;
+      Setpoint = 40;
 
       if (cooling_started == 0) {
         cooling_started = 1;
         time_start = now;
+//        format_time();
       }
       else{
+        //format_time();
         cool_time = (now - time_start)/1000;
       }
 
@@ -222,8 +204,6 @@ void loop() {
         CurrentState = state_cooling_transition;
       else
         CurrentState = state_cooling;
-      
-    //  if (cooling_state_flag == 0) cooling_state_flag = 1;
     } 
     break;
 
@@ -257,6 +237,18 @@ void loop() {
 	}
 }
 
+//void format_time(int start_time){
+//if (CurrentState == state_idle) {
+//time_minute = 0;
+//time_minute_text = "00";}
+//else if (CurrentState == state_roasting){
+  
+//}
+//milli()/1000 = seconds
+//seconds/60 = minutes
+//Seconds%60 = remaining seconds
+//}
+
 void display_start() {
 	lcd.lcdClear();
     
@@ -267,21 +259,6 @@ void display_start() {
 	lcd.lcdWrite("Coffee Roasting");
 	delay(750);
 }
-
-/*ISR(TIMER1_COMPA_vect) {
-unsigned long currentTime = millis();
-static unsigned long previousTime = 0;
-const unsigned long interval = 350;  // Every half second
-Serial.print("previousTime value ");
-Serial.println(previousTime);
-Serial.print("currentTime value ");
-Serial.println(currentTime);
-if (currentTime - previousTime >= interval) {
-    previousTime += interval;
-
-    display_screen();
-  } 
-}*/
 
 void thermal_power_button(){
   if(!(buttons & 0x08)) {
@@ -317,13 +294,14 @@ void fan1_button(){
   }
 }
 
-void fan1_ramp_up() {
-  //int fan_level = 0;
-  for (int i = 0; i <= 33; i++) {
-    fan1_val = fan1_val+6;
+void fan1_ramp_up(int step_size) {
+  fan1_val = 0;
+  for (int i = 0; i <= 35; i++) {
+    fan1_val = fan1_val+step_size;
     analogWrite(FAN1_PIN, fan1_val);
-    delay(10);
+    delay(10); //To give time for the current to settle after step
   }
+  sprintf(fan1, "%d", fan1_val);
 }
 
 ISR(TIMER1_COMPA_vect) {
@@ -333,13 +311,25 @@ ISR(TIMER1_COMPA_vect) {
 
 //The state flags are set so the second time around it doesn't refresh the entire display
 void refreshlcd(){
-  Serial.println("Refresh LCD");
   if (refresh_display_flag == 1){
     if (CurrentState == state_idle) {
       display_idle();
       idle_state_flag = 1;
+      Serial.print(F(",Ambient,"));
+      Serial.print(thermocouple.readInternal());
+      Serial.print(F(",Temp,"));
+      Serial.print(Input);
+      Serial.print(F(",state,"));
+      Serial.println(CurrentState);
     }
     else if (CurrentState == state_roasting) {
+      //Serial.print("Refresh LCD,");
+      Serial.print(F(",Ambient,"));
+      Serial.print(thermocouple.readInternal());
+      Serial.print(F(",Temp,"));
+      Serial.print(Input);
+      Serial.print(F(",state,"));
+      Serial.println(CurrentState);
       display_roasting();
       roasting_state_flag = 1;
     }
@@ -408,7 +398,7 @@ void display_roasting() {
 void display_cooling() {
   if (cooling_state_flag == 0){
     lcd.lcdGoToXY(1,1);
-    lcd.lcdWrite("Roast ");
+    lcd.lcdWrite("Cool ");
     lcd.lcdGoToXY(7,1);
     lcd.lcdWrite("Temp = ");
     lcd.lcdGoToXY(14,1);
@@ -434,7 +424,6 @@ void display_cooling() {
 
 void display_debug() {
   if (debug_state_flag == 0){
-    Serial.print("Long");
     lcd.lcdGoToXY(1,1);
     lcd.lcdWrite("Debug ");
     lcd.lcdGoToXY(7,1);
@@ -451,7 +440,6 @@ void display_debug() {
     lcd.lcdWrite(roast);
   }
   else {
-    Serial.print("Short");
     lcd.lcdGoToXY(14,1);
     lcd.lcdWrite(Input);
     lcd.lcdGoToXY(5,2);
@@ -463,10 +451,7 @@ void display_debug() {
 
 double get_temp(void) {
 	if (!simulation){
-		Serial.print("Temp: ");
-    Serial.println(thermocouple.readInternal());
-		Input = thermocouple.readFahrenheit();
-		//Serial.println(temperature);
+		Input = thermocouple.readCelsius();
 	}
 	else Input = simulation_temp();
 	return Input;
@@ -480,16 +465,16 @@ double simulation_temp(void) {
 	}
     else {
 		if (RELAY == 0) {
-			if (Input_simulation > 77 && Input_simulation < 100 ) Input_simulation       = Input_simulation-0.000089;
-			else if (Input_simulation > 100 && Input_simulation < 125 ) Input_simulation = Input_simulation-0.000128;
-			else if (Input_simulation > 125 && Input_simulation < 150 ) Input_simulation = Input_simulation-0.000321;
-			else if (Input_simulation > 150 && Input_simulation < 200 ) Input_simulation = Input_simulation-0.00081;
-			else if (Input_simulation > 200 && Input_simulation < 250 ) Input_simulation = Input_simulation-0.0012;
-			else if (Input_simulation > 250 && Input_simulation < 300 ) Input_simulation = Input_simulation-0.0014;
-			else if (Input_simulation > 300 && Input_simulation < 350 ) Input_simulation = Input_simulation-0.0016;
-			else if (Input_simulation > 350 && Input_simulation < 400 ) Input_simulation = Input_simulation-0.0018;
-			else if (Input_simulation > 400 && Input_simulation < 450 ) Input_simulation = Input_simulation-0.002;
-			else if (Input_simulation > 450 && Input_simulation < 500 ) Input_simulation = Input_simulation-0.0022;
+			if (Input_simulation > 77 && Input_simulation < 100 )       Input_simulation = Input_simulation-0.00089;
+			else if (Input_simulation > 100 && Input_simulation < 125 ) Input_simulation = Input_simulation-0.00128;
+			else if (Input_simulation > 125 && Input_simulation < 150 ) Input_simulation = Input_simulation-0.00321;
+			else if (Input_simulation > 150 && Input_simulation < 200 ) Input_simulation = Input_simulation-0.0081;
+			else if (Input_simulation > 200 && Input_simulation < 250 ) Input_simulation = Input_simulation-0.012;
+			else if (Input_simulation > 250 && Input_simulation < 300 ) Input_simulation = Input_simulation-0.014;
+			else if (Input_simulation > 300 && Input_simulation < 350 ) Input_simulation = Input_simulation-0.016;
+			else if (Input_simulation > 350 && Input_simulation < 400 ) Input_simulation = Input_simulation-0.018;
+			else if (Input_simulation > 400 && Input_simulation < 450 ) Input_simulation = Input_simulation-0.02;
+			else if (Input_simulation > 450 && Input_simulation < 500 ) Input_simulation = Input_simulation-0.022;
 			else Input_simulation = Input_simulation;
 		}
 		else {

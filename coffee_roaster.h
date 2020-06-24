@@ -22,10 +22,11 @@ int refresh_display_flag = 0;
 int check_buttons_flag = 0;
 
 //Initialize Roast type and default value
-char roast[4] = "180";
-int roast_val = 180;
+char roast[4] = "200";
+int roast_val = 200;
 char fan1[4] = "  0";
 int fan1_val = 0;
+int fan2_val = 0;
 
 //Intialize time counters
 unsigned long roast_time = 0;
