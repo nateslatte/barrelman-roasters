@@ -24,10 +24,16 @@ int check_buttons_flag = 0;
 //Initialize Roast type and default value
 char roast[4] = "200";
 int roast_val = 200;
-char fan1[4] = "  0";
-int fan1_val = 0;
-int fan2_val = 0;
+char fan[4] = "  0";
+int fan_val = 0;
+int motor_val = 0;
 
 //Intialize time counters
 unsigned long roast_time = 0;
+char roast_time_char[6] = "00:00";
 unsigned long cool_time = 0;
+char cool_time_char[6] = "00:00";
+
+//Initialize Thermal temp in Celsius
+double Input = 10;
+char Input_buffer [4] = "  0";
