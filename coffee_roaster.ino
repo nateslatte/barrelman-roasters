@@ -327,10 +327,10 @@ void refreshlcd(){
       Serial.print(F(",Ambient,"));
       Serial.print(thermocouple.readInternal());
       Serial.print(F(",Temp,"));
-      Serial.print(Input);
-      Serial.print(F(",state,"));
-      Serial.println(roast_time_char);
-      Serial.print(Input);
+      Serial.println(Input);
+      //Serial.print(F(",state,"));
+      //Serial.println(roast_time_char);
+      //Serial.print(Input);
     }
     else if (CurrentState == state_roasting) {
       //Serial.print("Refresh LCD,");
@@ -348,10 +348,10 @@ void refreshlcd(){
       Serial.print(F(",Ambient,"));
       Serial.print(thermocouple.readInternal());
       Serial.print(F(",Temp,"));
-      Serial.print(Input);
-      Serial.print(F(",state,"));
-      Serial.println(CurrentState);
-      Serial.print(Input);
+      Serial.println(Input);
+      //Serial.print(F(",state,"));
+      //Serial.println(CurrentState);
+      //Serial.print(Input);
       conv_currtime_disp(cool_time);
       display_cooling();
       cooling_state_flag = 1;
