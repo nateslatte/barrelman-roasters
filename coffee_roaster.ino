@@ -37,7 +37,7 @@ Adafruit_MAX31855 thermocouple(MAXCLK, MAXCS, MAXDO);
 double Setpoint, Output, temperature;
 
 //Run a fake temperature increase
-boolean simulation = true;
+boolean simulation = false;
 boolean linear = true;
 double Input_simulation = 75;
 
@@ -191,7 +191,7 @@ void loop() {
       analogWrite(RELAY_PIN, 0);
       RELAY = 0;
       //analogWrite(FAN_PIN, 255);
-      Setpoint = 20;
+      Setpoint = 45;
 
       if (cooling_started == 0) {
         cooling_started = 1;
