@@ -41,7 +41,9 @@ boolean simulation = false;
 boolean linear = true;
 double Input_simulation = 75;
 
-unsigned long windowStartTime;  
+unsigned long windowStartTime;
+unsigned long startMillis;
+unsigned long now;  //Register for loop time
 
 #if defined(ARDUINO_ARCH_SAMD)
 // for Zero, output on USB Serial console, remove line below if using programming port to program the Zero!
@@ -70,8 +72,11 @@ void setup() {
   //Flash the start screen
   display_start();
 
-  // initialize timer1 
+
   noInterrupts();           // disable all interrupts
+  /** initialize timer1 The point of the timer is to give 250ms trigger
+  Caluclation is 1/16MHz * 15625 * 256 = 250ms
+  **/
   TCCR1A = 0;
   TCCR1B = 0;
   TCNT1  = 0;
@@ -79,7 +84,11 @@ void setup() {
   TCCR1B |= (1 << WGM12);   // CTC mode
   TCCR1B |= (1 << CS12);    // 256 prescaler 
   TIMSK1 |= (1 << OCIE1A);  // enable timer compare interrupt
+
   interrupts();  //allows interrupts
+
+  startMillis = millis();  //initial start time for ADC sample routine
+  
   
   //wait for MAX chip to stabilize if simulation is not happening
   if (simulation) {
@@ -102,29 +111,33 @@ void loop() {
   LEDBlink = !LEDBlink;
   analogWrite(MOTOR_PIN, motor_val);
   analogWrite(FAN_PIN, fan_val);
-
+  now = millis();//Grab time at start of loop
   
   if (check_buttons_flag >= 1){
     buttons = lcd.readButtons();
     check_buttons_flag = 0;
   }
   else buttons = 15;
-  
-  Input = get_temp();
-  x1 = round(Input);
-  if (Input < 10) {
-    sprintf(Input_buffer,"  %d", x1);
-  }
-  else if (Input <= 99) {
-    sprintf(Input_buffer," %d", x1);
-  }
-  else if (Input > 99) {
-    sprintf(Input_buffer,"%d", x1);
-  }
 
+  //Routine to sample the ADC every 100ms.  The reason for 100ms
+  if(now - startMillis >= ADC_sample_period){
+    Input = get_temp();
+    x1 = round(Input);
+    if (Input < 10) {
+      sprintf(Input_buffer,"  %d", x1);
+    }
+    else if (Input <= 99) {
+      sprintf(Input_buffer," %d", x1);
+    }
+    else if (Input > 99) {
+      sprintf(Input_buffer,"%d", x1);
+    }
+    ADC_sample_flag = 0;
+    startMillis = now;
+  }
+  
   //Go ahead and write values to LCD
   refreshlcd();
-  unsigned long now = millis();
   
   switch (CurrentState) {
     case state_idle:{
@@ -317,6 +330,11 @@ ISR(TIMER1_COMPA_vect) {
   refresh_display_flag = 1;
   check_buttons_flag++;
 }
+
+/*
+ISR(TIMER4_COMPA_vect) {
+  ADC_sample_flag = 1;
+}*/
 
 //The state flags are set so the second time around it doesn't refresh the entire display
 void refreshlcd(){
