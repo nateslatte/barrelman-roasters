@@ -20,6 +20,8 @@ int debug_state_flag = 0;
 int thermocouple_flag = 0;
 int refresh_display_flag = 0;
 int check_buttons_flag = 0;
+int ADC_sample_flag = 0;
+const unsigned long ADC_sample_period = 100;
 
 //Initialize Roast type and default value
 char roast[4] = "200";
