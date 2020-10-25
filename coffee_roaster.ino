@@ -2,7 +2,7 @@
 Pretty crappy coffee roasting code.  That is all
 Written by Nathan Slattengren.  
 BSD license, all text above must be included in any redistribution
-This is revision 8 of the design and supports connecting to a convection oven.  See Revision 7 for the last support of coffee roaster.
+This is revision 9 of the design and supports connecting rotisserie oven.  See Revision 7 for the last support of coffee roaster.
 ****************************************************/
 
 #include <SPI.h>
