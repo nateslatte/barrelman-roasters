@@ -5,21 +5,25 @@
 #define state_roasting_transition 4
 #define state_cooling 5 //Planned cooling behavior
 #define state_cooling_transition 6
-#define state_debug 7
-#define state_debug_transition 8
+#define state_preroast 7
+#define state_preroast_transition 8
+#define state_debug 9
+#define state_debug_transition 10
 
 #define LED_BUILTIN_TX 30
 
 int CurrentState = 0;  
 
 //Initialize all the state flags
-int idle_state_flag = 0;
-int roasting_state_flag = 0;
-int cooling_state_flag = 0;
-int debug_state_flag = 0;
-int thermocouple_flag = 0;
-int refresh_display_flag = 0;
-int check_buttons_flag = 0;
+boolean idle_state_flag = false;
+boolean preroast_state_flag = false;
+boolean roasting_state_flag = false;
+boolean cooling_state_flag = false;
+boolean debug_state_flag = false;
+boolean refresh_display_flag = false;
+int check_buttons_flag = false;
+int check_buttons_100ms_flag = false;
+boolean button_changed_flag = false;
 int ADC_sample_flag = 0;
 const unsigned long ADC_sample_period = 100;
 
