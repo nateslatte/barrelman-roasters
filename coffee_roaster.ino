@@ -2,7 +2,7 @@
 Pretty crappy coffee roasting code.  That is all
 Written by Nathan Slattengren.  
 BSD license, all text above must be included in any redistribution
-This is revision 9 of the design and supports connecting rotisserie oven.  See Revision 7 for the last support of coffee roaster.
+This is revision 8 of the design and supports connecting to a convection oven.  See Revision 7 for the last support of coffee roaster.
 ****************************************************/
 
 #include <SPI.h>
@@ -12,7 +12,9 @@ This is revision 9 of the design and supports connecting rotisserie oven.  See R
 #include "coffee_roaster.h"
 
 LCD16x2 lcd;
-int buttons;
+
+int PreviousButton;
+int CurrentButton;
 
 // Default connection is using software SPI, but comment and uncomment one of
 // the two examples below to switch between software SPI and hardware SPI:
@@ -23,8 +25,8 @@ int buttons;
 #define MAXCS   1
 #define MAXCLK 30 // The TX LED has a defined Arduino pin
 #define RELAY_PIN 6
-#define FAN_PIN 11
-#define MOTOR_PIN 5
+#define FAN_PIN 5
+#define MOTOR_PIN 11
 #define LED_GREEN_BOTTOM 8
 #define LED_GREEN_MIDDLE 9
 #define LED_RED_TOP 10
@@ -33,17 +35,19 @@ int buttons;
 // initialize the Thermocouple
 Adafruit_MAX31855 thermocouple(MAXCLK, MAXCS, MAXDO);
 
-//Define Variables we'll be connecting to
-double Setpoint, Output, temperature;
+//Defines
+double Setpoint;
 
 //Run a fake temperature increase
-boolean simulation = false;
+boolean simulation = true;
 boolean linear = true;
 double Input_simulation = 75;
 
-unsigned long windowStartTime;
+//Do a pre-heat before roasting?
+boolean preheat = true;
+
 unsigned long startMillis;
-unsigned long now;  //Register for loop time
+unsigned long now;  //Register for the current time at the start of each loop
 
 #if defined(ARDUINO_ARCH_SAMD)
 // for Zero, output on USB Serial console, remove line below if using programming port to program the Zero!
@@ -51,7 +55,6 @@ unsigned long now;  //Register for loop time
 #endif
 
 void setup() {
-  windowStartTime = millis();
   Wire.begin();
   Serial.begin(19200);
   
@@ -84,7 +87,6 @@ void setup() {
   TCCR1B |= (1 << WGM12);   // CTC mode
   TCCR1B |= (1 << CS12);    // 256 prescaler 
   TIMSK1 |= (1 << OCIE1A);  // enable timer compare interrupt
-
   interrupts();  //allows interrupts
 
   startMillis = millis();  //initial start time for ADC sample routine
@@ -103,7 +105,7 @@ unsigned long time_start = 0;
 double count = 0;
 int SaveState = 0;
 int LEDBlink = 1;
-int RELAY = 0;
+boolean RELAY = false;
 int x1 = 0;
 
 void loop() {
@@ -112,13 +114,25 @@ void loop() {
   analogWrite(MOTOR_PIN, motor_val);
   analogWrite(FAN_PIN, fan_val);
   now = millis();//Grab time at start of loop
-  
-  if (check_buttons_flag >= 1){
-    buttons = lcd.readButtons();
-    check_buttons_flag = 0;
-  }
-  else buttons = 15;
 
+ 
+  if (check_buttons_flag >= 1){
+    check_buttons_flag = 0;
+    if (button_changed_flag == 1){
+      CurrentButton = 15;
+      button_changed_flag = 0;
+      Serial.println("Changed flag clear");
+    }
+    else {
+      PreviousButton = CurrentButton;
+      CurrentButton = lcd.readButtons();
+      if (CurrentButton != PreviousButton) {button_changed_flag = 1;      
+      Serial.println("Changed flag");  
+      }
+    }
+  }
+  else CurrentButton = 15;
+   
   //Routine to sample the ADC every 100ms.  The reason for 100ms
   if(now - startMillis >= ADC_sample_period){
     Input = get_temp();
@@ -142,12 +156,12 @@ void loop() {
   switch (CurrentState) {
     case state_idle:{
       analogWrite(RELAY_PIN, 0);
-      RELAY = 0;
+      RELAY = false;
       motor_val = 0;
   
-      if(buttons == 15) CurrentState = state_idle;
-      else if (buttons == 14) CurrentState = state_idle_transition;
-      else if (buttons == 3) CurrentState = state_idle_to_debug_transition;
+      if(CurrentButton == 15) CurrentState = state_idle;
+      else if (CurrentButton == 14) CurrentState = state_idle_transition;
+      else if (CurrentButton == 3) CurrentState = state_idle_to_debug_transition;
       else CurrentState = state_idle;
       
       thermal_power_button();
@@ -156,11 +170,11 @@ void loop() {
     
     case state_idle_transition: {
       lcd.lcdClear();
-      CurrentState = state_roasting;
-      idle_state_flag = 0;
+      if (preheat == true) CurrentState = state_preroast;
+      else CurrentState = state_roasting;
+      idle_state_flag = false;
       fan_val = 255;
       fan[4] = "255";
-      //fan1_ramp_up(4);
       motor_val = 255;
     }
     break;
@@ -168,14 +182,38 @@ void loop() {
     case state_idle_to_debug_transition:{
       lcd.lcdClear();
       CurrentState = state_debug;
-      idle_state_flag = 0;
+      idle_state_flag = false;
       char roast[4] = "00";
       int roast_val = 0;
       int fan_val = 0;
       //fan1_ramp_up(4);
     }
     break;
-    
+
+    case state_preroast: {
+      motor_val = 0; //don't turn on motor yet
+      if (roasting_started == 0) {
+        roasting_started = 1;
+        time_start = now;
+        }
+      else roast_time = (now - time_start);
+      analogWrite(RELAY_PIN, roast_val);
+      RELAY = true;
+
+      thermal_power_button();
+      if (!(CurrentButton & 0x02)) CurrentState = state_preroast_transition;
+      else CurrentState = state_preroast;
+    }
+    break;
+
+    case state_preroast_transition:
+      lcd.lcdClear();
+      preroast_state_flag = false;
+      roasting_started = 0;
+      CurrentState = state_roasting;
+      roast_time = 0;
+    break;
+   
     case state_roasting: {
       if (roasting_started == 0) {
         roasting_started = 1;
@@ -183,18 +221,18 @@ void loop() {
         }
       else roast_time = (now - time_start);
       analogWrite(RELAY_PIN, roast_val);
-      RELAY = 1;
+      RELAY = true;
       
       thermal_power_button();
-      
-      if (!(buttons & 0x02)) CurrentState = state_roasting_transition;
+
+      if (!(CurrentButton & 0x02)) CurrentState = state_roasting_transition;
       else CurrentState = state_roasting;
     }
     break;
 
     case state_roasting_transition:
       lcd.lcdClear();
-      roasting_state_flag = 0;
+      roasting_state_flag = false;
       roasting_started = 0;
       CurrentState = state_cooling;
       roast_time = 0;
@@ -202,7 +240,7 @@ void loop() {
    
     case state_cooling: {
       analogWrite(RELAY_PIN, 0);
-      RELAY = 0;
+      RELAY = false;
       //analogWrite(FAN_PIN, 255);
       Setpoint = 45;
 
@@ -217,7 +255,7 @@ void loop() {
       thermal_power_button();
       
       if(Input > Setpoint){
-        if (!(buttons & 0x02))
+        if (!(CurrentButton & 0x02))
           CurrentState = state_cooling_transition;
         else
           CurrentState = state_cooling;
@@ -232,7 +270,7 @@ void loop() {
     case state_cooling_transition:
       lcd.lcdClear();
       cooling_started = 0;
-      cooling_state_flag = 0;
+      cooling_state_flag = false;
       CurrentState = state_idle;
       cool_time = 0;
       fan_val = 0;
@@ -242,10 +280,10 @@ void loop() {
 
     case state_debug: {
       analogWrite(RELAY_PIN, roast_val);
-      RELAY = 1;
+      RELAY = true;
       //analogWrite(FAN_PIN, fan_val);
 
-      if(buttons == 12) CurrentState = state_debug_transition;
+      if(CurrentButton == 12) CurrentState = state_debug_transition;
       else CurrentState = state_debug;
 
       thermal_power_button();
@@ -255,7 +293,7 @@ void loop() {
 
     case state_debug_transition:
       lcd.lcdClear();
-      debug_state_flag = 0;
+      debug_state_flag = false;
       CurrentState = state_cooling;
     break;
   }
@@ -265,7 +303,7 @@ void display_start() {
   lcd.lcdClear();
     
   lcd.lcdGoToXY(4,1);
-  lcd.lcdWrite("Barrel Man");
+  lcd.lcdWrite("Barrel Man v9");
 
   lcd.lcdGoToXY(1,2);
   lcd.lcdWrite("Coffee Roasting");
@@ -273,14 +311,14 @@ void display_start() {
 }
 
 void thermal_power_button(){
-  if(!(buttons & 0x08)) {
+  if(!(CurrentButton & 0x08)) {
     if (roast_val == 255) roast_val = 00;
     else roast_val++;
     if (roast_val < 10) sprintf(roast, "  %d",roast_val);
     else if (roast_val < 100) sprintf(roast, " %d",roast_val);
     else sprintf(roast, "%d", roast_val);
   }
-  else if (!(buttons & 0x04)) {
+  else if (!(CurrentButton & 0x04)) {
     if (roast_val == 00) roast_val = 255;
     else roast_val--;
     if (roast_val < 10) sprintf(roast, "  %d",roast_val);
@@ -290,14 +328,14 @@ void thermal_power_button(){
 }
 
 void fan_button(){
-  if(!(buttons & 0x02)) {
+  if(!(CurrentButton & 0x02)) {
     if (fan_val == 255) fan_val = 00;
     else fan_val++;
     if (fan_val < 10) sprintf(fan, "  %d",fan_val);
     else if (fan_val < 100) sprintf(fan, " %d",fan_val);
     else sprintf(fan, "%d", fan_val);
   }
-  else if (!(buttons & 0x01)) {
+  else if (!(CurrentButton & 0x01)) {
     if (fan_val == 00) fan_val = 255;
     else fan_val--;
     if (fan_val < 10) sprintf(fan, "  %d",fan_val);
@@ -327,21 +365,16 @@ void fan1_ramp_up(int step_size) {
 }
 
 ISR(TIMER1_COMPA_vect) {
-  refresh_display_flag = 1;
+  refresh_display_flag = true;
   check_buttons_flag++;
 }
 
-/*
-ISR(TIMER4_COMPA_vect) {
-  ADC_sample_flag = 1;
-}*/
-
 //The state flags are set so the second time around it doesn't refresh the entire display
 void refreshlcd(){
-  if (refresh_display_flag == 1){
+  if (refresh_display_flag == true){
     if (CurrentState == state_idle) {
       display_idle();
-      idle_state_flag = 1;
+      idle_state_flag = true;
       Serial.print(F(",Ambient,"));
       Serial.print(thermocouple.readInternal());
       Serial.print(F(",Temp,"));
@@ -360,7 +393,7 @@ void refreshlcd(){
       Serial.println(roast);
       conv_currtime_disp(roast_time);
       display_roasting();
-      roasting_state_flag = 1;
+      roasting_state_flag = true;
     }
     else if (CurrentState == state_cooling) {
       Serial.print(F(",Ambient,"));
@@ -372,18 +405,32 @@ void refreshlcd(){
       //Serial.print(Input);
       conv_currtime_disp(cool_time);
       display_cooling();
-      cooling_state_flag = 1;
+      cooling_state_flag = true;
+    }
+    else if (CurrentState == state_preroast) {
+      Serial.print(F(",Ambient,"));
+      Serial.print(thermocouple.readInternal());
+      Serial.print(F(",Temp,"));
+      Serial.println(Input);
+      Serial.print(F(",roast value,"));
+      Serial.println(CurrentState);
+      //Serial.print(F(",state,"));
+      //Serial.println(CurrentState);
+      //Serial.print(Input);
+      conv_currtime_disp(roast_time);
+      display_preroast();
+      preroast_state_flag = true;
     }
     else if (CurrentState == state_debug) {
       display_debug();
-      debug_state_flag = 1;
+      debug_state_flag = true;
     }
-    refresh_display_flag = 0;
+    refresh_display_flag = false;
   }
 }
 
 void display_idle() {
-    if (idle_state_flag == 0) {
+    if (idle_state_flag == false) {
     lcd.lcdGoToXY(1,1);
     lcd.lcdWrite("Idle  ");
     lcd.lcdGoToXY(7,1);
@@ -405,8 +452,35 @@ void display_idle() {
   }
 }
 
+void display_preroast() {
+  if (preroast_state_flag == false){
+    lcd.lcdGoToXY(1,1);
+    lcd.lcdWrite("Heat  ");
+    lcd.lcdGoToXY(7,1);
+    lcd.lcdWrite("Temp = ");
+    lcd.lcdGoToXY(14,1);
+    lcd.lcdWrite(Input_buffer);
+    lcd.lcdGoToXY(1,2);
+    lcd.lcdWrite(roast_time_char);
+    lcd.lcdGoToXY(6,2);
+    lcd.lcdWrite(" End?");
+    lcd.lcdGoToXY(12,2);
+    lcd.lcdWrite("  ");
+    lcd.lcdGoToXY(14,2);
+    lcd.lcdWrite(roast);
+  }
+  else {
+    lcd.lcdGoToXY(14,1);
+    lcd.lcdWrite(Input_buffer);
+    lcd.lcdGoToXY(1,2);
+    lcd.lcdWrite(roast_time_char);
+    lcd.lcdGoToXY(14,2);
+    lcd.lcdWrite(roast);
+  }
+}
+
 void display_roasting() {
-  if (roasting_state_flag == 0){
+  if (roasting_state_flag == false){
     lcd.lcdGoToXY(1,1);
     lcd.lcdWrite("Roast ");
     lcd.lcdGoToXY(7,1);
@@ -433,7 +507,7 @@ void display_roasting() {
 }
 
 void display_cooling() {
-  if (cooling_state_flag == 0){
+  if (cooling_state_flag == false){
     lcd.lcdGoToXY(1,1);
     lcd.lcdWrite("Cool ");
     lcd.lcdGoToXY(7,1);
@@ -460,7 +534,7 @@ void display_cooling() {
 }
 
 void display_debug() {
-  if (debug_state_flag == 0){
+  if (debug_state_flag == false){
     lcd.lcdGoToXY(1,1);
     lcd.lcdWrite("Debug ");
     lcd.lcdGoToXY(7,1);
@@ -503,7 +577,7 @@ double simulation_temp(void) {
     else Input_simulation = (Input_simulation - Input_simulation/9);
   }
     else {
-    if (RELAY == 0) {
+    if (RELAY == false) {
       if (Input_simulation > 77 && Input_simulation < 100 )       Input_simulation = Input_simulation-0.0089;
       else if (Input_simulation > 100 && Input_simulation < 125 ) Input_simulation = Input_simulation-0.0128;
       else if (Input_simulation > 125 && Input_simulation < 150 ) Input_simulation = Input_simulation-0.0321;
