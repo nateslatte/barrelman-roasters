@@ -302,8 +302,8 @@ void loop() {
 void display_start() {
   lcd.lcdClear();
     
-  lcd.lcdGoToXY(4,1);
-  lcd.lcdWrite("Barrel Man v9");
+  lcd.lcdGoToXY(3,1);
+  lcd.lcdWrite("Barrel Man v10");
 
   lcd.lcdGoToXY(1,2);
   lcd.lcdWrite("Coffee Roasting");
