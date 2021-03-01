@@ -303,7 +303,7 @@ void display_start() {
   lcd.lcdClear();
     
   lcd.lcdGoToXY(3,1);
-  lcd.lcdWrite("Barrel Man v10");
+  lcd.lcdWrite("Barrel Man v11");
 
   lcd.lcdGoToXY(1,2);
   lcd.lcdWrite("Coffee Roasting");
