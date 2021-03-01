@@ -28,8 +28,8 @@ int ADC_sample_flag = 0;
 const unsigned long ADC_sample_period = 100;
 
 //Initialize Roast type and default value
-char roast[4] = "200";
-int roast_val = 200;
+char roast[4] = "250";
+int roast_val = 250;
 char fan[4] = "  0";
 int fan_val = 0;
 int motor_val = 0;
