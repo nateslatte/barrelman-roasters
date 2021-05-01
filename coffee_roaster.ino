@@ -24,7 +24,7 @@ int CurrentButton;
 // digital IO pins.
 #define MAXDO   0
 #define MAXCS   1
-#define MAXCS1   2
+#define MAXCS1  12
 #define MAXCLK 30 // The TX LED has a defined Arduino pin
 #define RELAY_PIN 6
 #define FAN_PIN 5
@@ -36,14 +36,14 @@ int CurrentButton;
 
 // initialize the Thermocouple
 Adafruit_MAX31855 thermocouple(MAXCLK, MAXCS, MAXDO);
-Adafruit_MAX31855 thermocouple2(MAXCLK, MAXCS1, MAXDO);
+Adafruit_MAX31855 thermocouple1(MAXCLK, MAXCS1, MAXDO);
 
 //Defines
 float Setpoint;
 
 //For humidity sensor
 float humidity = 0;
-float tempf = 0;
+//float tempf = 0;
 
 //Run a fake temperature increase
 boolean simulation = true;
@@ -148,17 +148,20 @@ void loop() {
    
   //Routine to sample the ADC every 100ms.  The reason for 100ms
   if(now - startMillis >= ADC_sample_period){
-    Input = get_temp();
-    x1 = round(Input);
-    if (Input < 10) {
-      sprintf(Input_buffer,"  %d", x1);
+    if(sample_temp1 == true) {
+      Input1 = get_temp(Input1);
+      x1 = round(Input1);
+      if (Input1 < 10) {
+        sprintf(Input_buffer,"  %d", x1);
+      }
+      else if (Input1 <= 99) {
+        sprintf(Input_buffer," %d", x1);
+      }
+      else if (Input1 > 99) {
+        sprintf(Input_buffer,"%d", x1);
+      }
     }
-    else if (Input <= 99) {
-      sprintf(Input_buffer," %d", x1);
-    }
-    else if (Input > 99) {
-      sprintf(Input_buffer,"%d", x1);
-    }
+    else Input2 = get_temp(Input2);
     ADC_sample_flag = 0;
     startMillis = now;
     handleSerialCommand();
@@ -270,13 +273,13 @@ void loop() {
 
       thermal_power_button();
       
-      if(Input > Setpoint){
+      if(Input1 > Setpoint){
         if (!(CurrentButton & 0x02))
           CurrentState = state_cooling_transition;
         else
           CurrentState = state_cooling;
       }
-      else if((Input < Setpoint) || (Input == Setpoint))
+      else if((Input1 < Setpoint) || (Input1 == Setpoint))
         CurrentState = state_cooling_transition;
       else
         CurrentState = state_cooling;
@@ -402,10 +405,10 @@ void handleSerialCommand(){
 
 //Send Data
 void Command_READ(){    
-    Serial.print("0.00,");
-    Serial.print(Input);
+    Serial.print("0.00,"); //ambient
+    Serial.print(Input1);
     Serial.print(",");
-    Serial.print(Input);
+    Serial.print(Input2);
     Serial.println(",0.00,0.00");
 }
 
@@ -431,51 +434,41 @@ void refreshlcd(){
     if (CurrentState == state_idle) {
       display_idle();
       idle_state_flag = true;
-      Serial.print(F(",Ambient,"));
+      /*Serial.print(F(",Ambient,"));
       Serial.print(thermocouple.readInternal());
       Serial.print(F(",Temp,"));
-      Serial.println(Input);
+      Serial.println(Input1);
       Serial.print("Humidity:");
       Serial.print(humidity);
-      Serial.println("%");
-      //Serial.print(F(",state,"));
-      //Serial.println(roast_time_char);
-      //Serial.print(Input);
+      Serial.println("%");*/
     }
     else if (CurrentState == state_roasting) {
-      //Serial.print("Refresh LCD,");
-      Serial.print(F(",Ambient,"));
+      /*Serial.print(F(",Ambient,"));
       Serial.print(thermocouple.readInternal());
       Serial.print(F(",Temp,"));
-      Serial.print(Input);
+      Serial.print(Input1);
       Serial.print(F(",roast value,"));
-      Serial.println(roast);
+      Serial.println(roast);*/
       conv_currtime_disp(roast_time);
       display_roasting();
       roasting_state_flag = true;
     }
     else if (CurrentState == state_cooling) {
-      Serial.print(F(",Ambient,"));
+     /* Serial.print(F(",Ambient,"));
       Serial.print(thermocouple.readInternal());
       Serial.print(F(",Temp,"));
-      Serial.println(Input);
-      //Serial.print(F(",state,"));
-      //Serial.println(CurrentState);
-      //Serial.print(Input);
+      Serial.println(Input1);*/
       conv_currtime_disp(cool_time);
       display_cooling();
       cooling_state_flag = true;
     }
     else if (CurrentState == state_preroast) {
-      Serial.print(F(",Ambient,"));
+     /* Serial.print(F(",Ambient,"));
       Serial.print(thermocouple.readInternal());
       Serial.print(F(",Temp,"));
-      Serial.println(Input);
+      Serial.println(Input1);
       Serial.print(F(",roast value,"));
-      Serial.println(CurrentState);
-      //Serial.print(F(",state,"));
-      //Serial.println(CurrentState);
-      //Serial.print(Input);
+      Serial.println(CurrentState);*/ 
       conv_currtime_disp(roast_time);
       display_preroast();
       preroast_state_flag = true;
@@ -619,16 +612,23 @@ void display_debug() {
   }
 }
 
-float get_temp(void) {
+float get_temp(float temp) {
   float c;
   if (!simulation){
-    if (unit_F == true) c = thermocouple.readFahrenheit();
-    else c = thermocouple.readCelsius();
-    if (isnan(c)) Input = Input;
-    else Input = (c + Input)/2;
+    if (unit_F == true) {
+      if(sample_temp1 == true) c = thermocouple.readFahrenheit();
+      else c = thermocouple1.readFahrenheit();
+    }
+    else {
+      if(sample_temp1 == true) c = thermocouple.readCelsius();
+      else c = thermocouple1.readCelsius();
+    }
+    if (isnan(c)) c = temp;
+    else c = (c + temp)/2;
   }
-  else Input = simulation_temp();
-  return Input;
+  else c = simulation_temp();
+  !sample_temp1;
+  return c;
 }
 
 void getHumidity()
@@ -637,7 +637,7 @@ void getHumidity()
   humidity = sensor.getRH();
 
   // Measure Temperature from the HTU21D or Si7021
-  tempf = sensor.getTempF();
+  // tempf = sensor.getTempF();
   // Temperature is measured every time RH is requested.
   // It is faster, therefore, to read it from previous RH
   // measurement with getTemp() instead with readTemp()
