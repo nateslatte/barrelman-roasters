@@ -27,6 +27,9 @@ boolean button_changed_flag = false;
 int ADC_sample_flag = 0;
 const unsigned long ADC_sample_period = 100;
 
+boolean unit_F = false;
+boolean sample_temp1 = true;
+
 //Initialize Roast type and default value
 char roast[4] = "250";
 int roast_val = 250;
@@ -41,5 +44,6 @@ unsigned long cool_time = 0;
 char cool_time_char[6] = "00:00";
 
 //Initialize Thermal temp in Celsius
-double Input = 10;
+float Input1 = 10;
+float Input2 = 10;
 char Input_buffer [4] = "  0";
