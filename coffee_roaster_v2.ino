@@ -2,7 +2,7 @@
 Pretty crappy coffee roasting code.  That is all
 Written by Nathan Slattengren.  
 BSD license, all text above must be included in any redistribution
-This is revision 8 of the design and supports connecting to a convection oven.  See Revision 7 for the last support of coffee roaster.
+This is revision 1 based on the new roaster PCBA design that adds two thermacouples
 ****************************************************/
 
 #include <SPI.h>
