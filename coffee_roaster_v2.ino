@@ -9,7 +9,7 @@ This is revision 8 of the design and supports connecting to a convection oven.  
 #include <Wire.h>
 #include "Adafruit_MAX31855.h"
 #include "LCD16x2.h"
-#include "coffee_roaster.h"
+#include "coffee_roaster_v2.h"
 
 LCD16x2 lcd;
 
