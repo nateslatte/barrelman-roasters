@@ -51,6 +51,12 @@ unsigned long cool_time = 0;
 char cool_time_char[6] = "00:00";
 
 //Initialize Thermal temp in Celsius
-double Input1 = 10;
-double Input2 = 10;
+float Input1 = 10;
+float Input1_sample1 = 10;
+float Input1_sample2 = 10;
+float Input1_average = 10;
+float Input2 = 10;
+float Input2_sample1 = 10;
+float Input2_sample2 = 10;
+float Input2_average = 10;
 char Input_buffer [4] = "  0";
