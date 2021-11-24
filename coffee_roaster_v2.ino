@@ -1,15 +1,15 @@
-    /*************************************************** 
+/*************************************************** 
 Pretty crappy coffee roasting code.  That is all
 Written by Nathan Slattengren.  
 BSD license, all text above must be included in any redistribution
-This is revision 1 based on the new roaster PCBA design that adds two thermacouples
+This is revision 8 of the design and supports connecting to a convection oven.  See Revision 7 for the last support of coffee roaster.
 ****************************************************/
 
 #include <SPI.h>
 #include <Wire.h>
 #include "Adafruit_MAX31855.h"
 #include "LCD16x2.h"
-#include "coffee_roaster_v2.h"
+#include "coffee_roaster.h"
 
 LCD16x2 lcd;
 
@@ -22,8 +22,8 @@ int CurrentButton;
 // Example creating a thermocouple instance with software SPI on any three
 // digital IO pins.
 #define MAXDO   0
-#define MAXCS1  4
-#define MAXCS2  1
+#define MAXCS1  1
+#define MAXCS2  4
 #define MAXCLK 30 // The TX LED has a defined Arduino pin
 #define RELAY_PIN 6
 #define FAN_PIN 5
@@ -71,18 +71,18 @@ void setup() {
   //Flash the start screen
   display_start();
 
-  noInterrupts();           // disable all interrupts
-  /** initialize timer1 The point of the timer is to give 250ms trigger
-  Caluclation is 1/16MHz * 15625 * 256 = 250ms
-  **/
-  TCCR1A = 0;
-  TCCR1B = 0;
-  TCNT1  = 0;
-  OCR1A = 15625;            // compare match register 16MHz/256/4Hz
-  TCCR1B |= (1 << WGM12);   // CTC mode
-  TCCR1B |= (1 << CS12);    // 256 prescaler 
-  TIMSK1 |= (1 << OCIE1A);  // enable timer compare interrupt
-  interrupts();  //allows interrupts
+    noInterrupts();           // disable all interrupts
+    /** initialize timer1 The point of the timer is to give 250ms trigger
+    Caluclation is 1/16MHz * 15625 * 256 = 250ms
+    **/
+    TCCR1A = 0;
+    TCCR1B = 0;
+    TCNT1  = 0;
+    OCR1A = 15625;            // compare match register 16MHz/256/4Hz
+    TCCR1B |= (1 << WGM12);   // CTC mode
+    TCCR1B |= (1 << CS12);    // 256 prescaler 
+    TIMSK1 |= (1 << OCIE1A);  // enable timer compare interrupt
+    interrupts();  //allows interrupts
 
   startMillis = millis();  //initial start time for ADC sample routine
   
@@ -94,12 +94,12 @@ void setup() {
   }
 }
 
-int roasting_started = 0;
-int cooling_started = 0;
+boolean roasting_started = false;
+boolean cooling_started = false;
 unsigned long time_start = 0;
 int count = 0;
 int SaveState = 0;
-int LEDBlink = 1;
+boolean LEDBlink = true;
 boolean RELAY = false;
 int x1 = 0;
 
@@ -112,16 +112,20 @@ void loop() {
 
   //Routine to sample the ADC every 250ms.  The MAX31855 takes up to 100ms per sample to have stable data
   if(interrupt_trigger_flag = true){
-    if(sample_temp1 == true){
-      Input1 = get_temp(Input1,sample_temp1);
-      x1 = round(Input1);
+//    if(sample_temp1 == true){
+      Input1_average = get_temp(Input1,true);
+      Serial.println(Input1_average);
+      x1 = round(Input1_average);
       sprintf(Input_buffer,"%3d", x1);
-      }
-    else {
-      Input2 = get_temp(Input2,sample_temp1);
-    }
-    
-    sample_temp1 = !sample_temp1;
+//      Serial.print("Temp 1: ");
+//      Serial.println(Input1);
+//      }
+//    else{
+      Input2_average = get_temp(Input2,false);
+      Serial.println(Input2_average);
+
+//      }
+//    sample_temp1 = !sample_temp1;
     
     //Go ahead and write values to LCD
     refreshlcd();
@@ -142,18 +146,13 @@ void loop() {
     }
   }
   else CurrentButton = 15;
-
-  recvWithEndMarker();
-  ProcessData();
   
   switch (CurrentState) {
     case state_idle:{
       analogWrite(RELAY_PIN, 0);
       RELAY = false;
-      motor_val = 0;
   
-      if(CurrentButton == 15) CurrentState = state_idle;
-      else if (CurrentButton == 14) CurrentState = state_idle_transition;
+      if (CurrentButton == 14) CurrentState = state_idle_transition;
       else CurrentState = state_idle;
       
       thermal_power_button();
@@ -170,9 +169,8 @@ void loop() {
     break;
 
     case state_preroast: {
-      motor_val = 0; //don't turn on motor yet
-      if (roasting_started == 0) {
-        roasting_started = 1;
+      if (roasting_started == false) {
+        roasting_started = true;
         time_start = now;
         }
       else roast_time = (now - time_start);
@@ -188,15 +186,15 @@ void loop() {
     case state_preroast_transition:
       lcd.lcdClear();
       preroast_state_flag = false;
-      roasting_started = 0;
+      roasting_started = false;
       CurrentState = state_roasting;
       roast_time = 0;
       motor_val = 255;
     break;
    
     case state_roasting: {
-      if (roasting_started == 0) {
-        roasting_started = 1;
+      if (roasting_started == false) {
+        roasting_started = true;
         time_start = now;
         }
       else roast_time = (now - time_start);
@@ -213,7 +211,7 @@ void loop() {
     case state_roasting_transition:
       lcd.lcdClear();
       roasting_state_flag = false;
-      roasting_started = 0;
+      roasting_started = false;
       CurrentState = state_cooling;
       roast_time = 0;
     break;
@@ -221,35 +219,28 @@ void loop() {
     case state_cooling: {
       analogWrite(RELAY_PIN, 0);
       RELAY = false;
-      //analogWrite(FAN_PIN, 255);
       Setpoint = 45;
 
-      if (cooling_started == 0) {
-        cooling_started = 1;
+      if (cooling_started == false) {
+        cooling_started = true;
         time_start = now;
       }
-      else{
-        cool_time = (now - time_start);
-      }
+      else cool_time = (now - time_start);
 
       thermal_power_button();
       
       if(Input1 > Setpoint){
-        if (!(CurrentButton & 0x02))
-          CurrentState = state_cooling_transition;
-        else
-          CurrentState = state_cooling;
-      }
-      else if((Input1 < Setpoint) || (Input1 == Setpoint))
-        CurrentState = state_cooling_transition;
-      else
-        CurrentState = state_cooling;
-    } 
+        if (!(CurrentButton & 0x02)) CurrentState = state_cooling_transition;
+        else CurrentState = state_cooling;
+        }
+      else if((Input1 < Setpoint) || (Input1 == Setpoint)) CurrentState = state_cooling_transition;
+      else CurrentState = state_cooling;
+      } 
     break;
 
     case state_cooling_transition:
       lcd.lcdClear();
-      cooling_started = 0;
+      cooling_started = false;
       cooling_state_flag = false;
       CurrentState = state_idle;
       cool_time = 0;
@@ -257,6 +248,10 @@ void loop() {
       motor_val = 0;
     break;
   }
+  recvWithEndMarker();
+  ProcessData();
+//      Serial.print("Temp 1: ");
+//      Serial.println(Input1);
 }
 
 void display_start() {
@@ -282,11 +277,11 @@ void thermal_power_button(){
 }
 
 void fan_button(){
-  if(!(CurrentButton & 0x02)) {
+  if(!(CurrentButton & FOURTH_BUTTON)) {
     fan_val++;
     sprintf(fan, "%3d", fan_val);
   }
-  else if (!(CurrentButton & 0x01)) {
+  else if (!(CurrentButton & THIRD_BUTTON)) {
     fan_val--;
     sprintf(fan, "%3d", fan_val);
   }
@@ -298,8 +293,8 @@ char conv_currtime_disp(unsigned long input_milli){
   int secsRemaining=allSeconds%3600;
   int runMinutes=secsRemaining/60;
   int runSeconds=secsRemaining%60;
-  if (roasting_started == 1) sprintf(roast_time_char,"%02d:%02d",runMinutes,runSeconds);
-  else if (cooling_started == 1) sprintf(cool_time_char,"%02d:%02d",runMinutes,runSeconds);
+  if (roasting_started == true) sprintf(roast_time_char,"%02d:%02d",runMinutes,runSeconds);
+  else if (cooling_started == false) sprintf(cool_time_char,"%02d:%02d",runMinutes,runSeconds);
 }
 
 void recvWithEndMarker() {
@@ -312,9 +307,7 @@ void recvWithEndMarker() {
         if (rc != endMarker) {
             receivedChars[ndx] = rc;
             ndx++;
-            if (ndx >= numChars) {
-                ndx = numChars - 1;
-            }
+            if (ndx >= numChars) ndx = numChars - 1;
         }
         else {
             receivedChars[ndx] = '\0'; // terminate the string
@@ -355,6 +348,14 @@ void Command_READ(){
 }
 
 ISR(TIMER1_COMPA_vect) {
+  if (unit_F == true) {
+    Input1 = thermocouple1.readFahrenheit();
+    Input2 = thermocouple2.readFahrenheit();
+  }
+  else {
+    Input1 = thermocouple1.readInternal();
+    Input2 = thermocouple2.readInternal();
+  }
   interrupt_trigger_flag = true;
   check_buttons_flag++;
 }
@@ -364,45 +365,22 @@ void refreshlcd(){
     if (CurrentState == state_idle) {
       display_idle();
       idle_state_flag = true;
-      /*Serial.print(F(",Ambient,"));
-      Serial.print(thermocouple.readInternal());
-      Serial.print(F(",Temp,"));
-      Serial.println(Input1);
-      Serial.print("Humidity:");
-      Serial.print(humidity);
-      Serial.println("%");*/
     }
+    else if (CurrentState == state_preroast) {
+      conv_currtime_disp(roast_time);
+      display_preroast();
+      preroast_state_flag = true;
+    }   
     else if (CurrentState == state_roasting) {
-      /*Serial.print(F(",Ambient,"));
-      Serial.print(thermocouple.readInternal());
-      Serial.print(F(",Temp,"));
-      Serial.print(Input1);
-      Serial.print(F(",roast value,"));
-      Serial.println(roast);*/
       conv_currtime_disp(roast_time);
       display_roasting();
       roasting_state_flag = true;
     }
     else if (CurrentState == state_cooling) {
-     /* Serial.print(F(",Ambient,"));
-      Serial.print(thermocouple.readInternal());
-      Serial.print(F(",Temp,"));
-      Serial.println(Input1);*/
       conv_currtime_disp(cool_time);
       display_cooling();
       cooling_state_flag = true;
     }
-    else if (CurrentState == state_preroast) {
-     /* Serial.print(F(",Ambient,"));
-      Serial.print(thermocouple.readInternal());
-      Serial.print(F(",Temp,"));
-      Serial.println(Input1);
-      Serial.print(F(",roast value,"));
-      Serial.println(CurrentState);*/ 
-      conv_currtime_disp(roast_time);
-      display_preroast();
-      preroast_state_flag = true;
-    }   
 }
 
 void display_idle() {
@@ -510,21 +488,18 @@ void display_cooling() {
 }
 
 float get_temp(float temp,boolean read_sensor_one) {
-  double c;
+  float c;
   if (!simulation){
-    if (unit_F == true) {
-      if(read_sensor_one == true) c = thermocouple1.readFahrenheit();
-      else c = thermocouple2.readFahrenheit();
-    }
-    else {
-      if(read_sensor_one == true) c = thermocouple1.readCelsius();
-      else c = thermocouple2.readCelsius();
-    }
-    if (isnan(c))
-    {
-      c = temp; 
-    }
-    else c = (c + temp)/2;
+      if(read_sensor_one == true) {
+        Input1_sample2 = Input1_sample1;
+        Input1_sample1 = Input1;
+        c = (Input1+Input1_sample1+Input1_sample2)/3;
+      }
+      else {
+        Input2_sample2 = Input2_sample1;
+        Input2_sample1 = Input2;
+        c = (Input2+Input2_sample1+Input2_sample2)/3;  
+      }
   }
   else c = simulation_temp();
   return c;
