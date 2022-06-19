@@ -1,4 +1,4 @@
-/*************************************************** 
+    /*************************************************** 
 Pretty crappy coffee roasting code.  That is all
 Written by Nathan Slattengren.  
 BSD license, all text above must be included in any redistribution
@@ -21,7 +21,7 @@ int CurrentButton;
 
 // Example creating a thermocouple instance with software SPI on any three
 // digital IO pins.
-#define MAXDO   0
+#define MAXDO   7
 #define MAXCS1  1
 #define MAXCS2  4
 #define MAXCLK 30 // The TX LED has a defined Arduino pin
@@ -114,15 +114,17 @@ void loop() {
   if(interrupt_trigger_flag = true){
 //    if(sample_temp1 == true){
       Input1_average = get_temp(Input1,true);
-      Serial.println(Input1_average);
+//      Serial.println(Input1_average);
       x1 = round(Input1_average);
       sprintf(Input_buffer,"%3d", x1);
-//      Serial.print("Temp 1: ");
-//      Serial.println(Input1);
+      Serial.print("Button: ");
+      Serial.println(CurrentButton);
+      Serial.print("State: ");
+      Serial.println(CurrentState);
 //      }
 //    else{
       Input2_average = get_temp(Input2,false);
-      Serial.println(Input2_average);
+//      Serial.println(Input2_average);
 
 //      }
 //    sample_temp1 = !sample_temp1;
@@ -178,7 +180,7 @@ void loop() {
       RELAY = true;
 
       thermal_power_button();
-      if (!(CurrentButton & 0x02)) CurrentState = state_preroast_transition;
+      if (!(CurrentButton & THIRD_BUTTON)) CurrentState = state_preroast_transition;
       else CurrentState = state_preroast;
     }
     break;
@@ -203,7 +205,7 @@ void loop() {
       
       thermal_power_button();
 
-      if (!(CurrentButton & 0x02)) CurrentState = state_roasting_transition;
+      if (!(CurrentButton & THIRD_BUTTON)) CurrentState = state_roasting_transition;
       else CurrentState = state_roasting;
     }
     break;
@@ -220,7 +222,6 @@ void loop() {
       analogWrite(RELAY_PIN, 0);
       RELAY = false;
       Setpoint = 45;
-
       if (cooling_started == false) {
         cooling_started = true;
         time_start = now;
@@ -230,7 +231,7 @@ void loop() {
       thermal_power_button();
       
       if(Input1 > Setpoint){
-        if (!(CurrentButton & 0x02)) CurrentState = state_cooling_transition;
+        if (!(CurrentButton & THIRD_BUTTON)) CurrentState = state_cooling_transition;
         else CurrentState = state_cooling;
         }
       else if((Input1 < Setpoint) || (Input1 == Setpoint)) CurrentState = state_cooling_transition;
@@ -294,7 +295,7 @@ char conv_currtime_disp(unsigned long input_milli){
   int runMinutes=secsRemaining/60;
   int runSeconds=secsRemaining%60;
   if (roasting_started == true) sprintf(roast_time_char,"%02d:%02d",runMinutes,runSeconds);
-  else if (cooling_started == false) sprintf(cool_time_char,"%02d:%02d",runMinutes,runSeconds);
+  else if (cooling_started == true) sprintf(cool_time_char,"%02d:%02d",runMinutes,runSeconds);
 }
 
 void recvWithEndMarker() {
@@ -353,8 +354,8 @@ ISR(TIMER1_COMPA_vect) {
     Input2 = thermocouple2.readFahrenheit();
   }
   else {
-    Input1 = thermocouple1.readInternal();
-    Input2 = thermocouple2.readInternal();
+    Input1 = thermocouple1.readCelsius();
+    Input2 = thermocouple2.readCelsius();
   }
   interrupt_trigger_flag = true;
   check_buttons_flag++;
