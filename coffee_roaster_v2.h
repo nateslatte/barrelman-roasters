@@ -1,12 +1,12 @@
 #define state_idle 0 //Idle state
 #define state_idle_transition 1
 #define state_idle_to_debug_transition 2
-#define state_roasting 3 //Roast started
-#define state_roasting_transition 4
-#define state_cooling 5 //Planned cooling behavior
-#define state_cooling_transition 6
-#define state_preroast 7
-#define state_preroast_transition 8
+#define state_preroast 3
+#define state_preroast_transition 4
+#define state_roasting 5 //Roast started
+#define state_roasting_transition 6
+#define state_cooling 7 //Planned cooling behavior
+#define state_cooling_transition 8
 #define state_debug 9
 #define state_debug_transition 10
 
@@ -31,7 +31,7 @@ const unsigned long ADC_sample_period = 100;
 const byte FIRST_BUTTON   =   0x08;
 const byte SECOND_BUTTON  =   0x04;
 const byte THIRD_BUTTON   =   0x02;
-const byte FOURTH_BUTTON =   0x01;
+const byte FOURTH_BUTTON  =   0x01;
 
 boolean unit_F = false;
 boolean sample_temp1 = true;
